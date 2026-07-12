@@ -1,0 +1,130 @@
+#' Addressing an issue:
+
+# https://github.com/tdaverse/phutil/issues/54
+
+#' Reproduce the behavior.
+
+library(TDA)
+library(ripserr)
+library(phutil)
+X <- matrix(rnorm(20), ncol = 2)
+do.call(ripsDiag, c(list(X = X, maxdimension = 2, maxscale = 10))) |>
+  as_persistence()
+do.call(vietoris_rips, c(list(dataset = X))) |>
+  as_persistence()
+
+#' Articulate the desired behavior.
+
+# GOAL: First `do.call()` call should not error, but produce a `persistence`
+# object like that of the second call.
+
+#' Trace the problem / identify the culprit.
+
+# separate `do.call()` and `as_persistence()`
+res <- do.call(ripsDiag, c(list(X = X, maxdimension = 2, maxscale = 10)))
+print(res)
+as_persistence(res)
+# confirm problem lies with `diagram` method
+phutil:::as_persistence.diagram(res$diagram)
+
+# walk through internals of this method
+x = res$diagram
+# internals of `as_persistence.diagram()`
+info <- attributes(x)
+names(info)
+stopifnot(
+  info$dimnames[[2L]][1L] == "dimension",
+  all(c("Birth", "Death") %in% info$dimnames[[2L]][c(2L, 3L)])
+)
+bd_cols <- match(c("Birth", "Death"), info$dimnames[[2L]])
+filt_nm <- gsub("*Diag", "", rlang::call_name(info$call))
+# reproduce error
+if (filt_nm == "rips") {
+  filt_nm <- "Vietoris-Rips"
+}
+
+# test for error without using `do.call()`
+res2 <- ripsDiag(X, maxdimension = 2, maxscale = 10)
+as_persistence(res2)
+
+x2 = res2$diagram
+# internals of `as_persistence.diagram()`
+info2 <- attributes(x2)
+names(info2)
+stopifnot(
+  info2$dimnames[[2L]][1L] == "dimension",
+  all(c("Birth", "Death") %in% info2$dimnames[[2L]][c(2L, 3L)])
+)
+bd_cols2 <- match(c("Birth", "Death"), info2$dimnames[[2L]])
+filt_nm2 <- gsub("*Diag", "", rlang::call_name(info2$call))
+if (filt_nm2 == "rips") {
+  filt_nm2 <- "Vietoris-Rips"
+}
+
+# compare `filt_nm`
+filt_nm
+filt_nm2
+# compare `info$call`
+info$call
+info2$call
+# compare `rlang::call_name(info$call)`
+rlang::call_name(info$call)
+rlang::call_name(info2$call)
+
+#' Update the issue.
+
+# minimal reproducible example: highlight the code chunk below and execute
+# `reprex::reprex()`
+
+# setup
+library(TDA)
+library(ripserr)
+library(phutil)
+X <- matrix(rnorm(20), ncol = 2)
+# call function directly
+res <- ripsDiag(X, maxdimension = 2, maxscale = 10)
+info <- attributes(res$diagram)
+info$call
+rlang::call_name(info$call)
+# call function through `do.call()`
+res <- do.call(ripsDiag, c(list(X = X, maxdimension = 2, maxscale = 10)))
+info <- attributes(res$diagram)
+info$call
+rlang::call_name(info$call)
+
+#' (Fork the repo.) Create a new branch.
+
+# `docall` branch created
+
+#' Correct the behavior.
+
+library(TDA)
+X <- matrix(rnorm(20), ncol = 2)
+res <- do.call(ripsDiag, c(list(X = X, maxdimension = 2, maxscale = 10)))
+x <- res$diagram
+# now work in 'persistence-class.R'
+
+#' Write unit tests to flag devations.
+
+# re-load the development version of the package to ensure that tests pass
+devtools::load_all()
+
+#' Run a local check.
+
+# if major changes:
+devtools::check()
+# if only minor changes (and using testthat or tinytest):
+devtools::test()
+tinytest::test_all()
+
+#' Announce the change.
+
+# edit 'NEWS.md'
+
+#' Sync to GitHub.
+
+# use Git
+
+#' Open a pull request.
+
+# use GitHub
