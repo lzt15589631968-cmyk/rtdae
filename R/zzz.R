@@ -1,14 +1,14 @@
-# 1. Initialize a global variable at the package level to store the Python module object (initially set to NULL)
+# Create a global variable at the top level to reserve a space for the Python module (set to NULL initially)
 scipy <- NULL
-# 2. Encapsulate the environment-binding logic entirely within the unified .onLoad hook
+# Automatically set up the Python environment when the R package is loaded
 .onLoad <- function(libname, pkgname) {
-  # Define the designated name for the isolated virtual environment internally
+  # Define our package's specific virtual environment name
   env_name <- "r-rtdae-env"
-  # Check for the existence of the specific virtualenv and enforce its prioritization if available
+  # If our specific virtual environment already exists, force R to use it first
   if (reticulate::virtualenv_exists(env_name)) {
 
     reticulate::use_virtualenv(env_name, required = TRUE)
   }
-  # Leverage the delay-load mechanism to safely import the scipy module at runtime
+  # Safely load scipy only when a user actually calls a function (Delay-Loading)
   scipy <<- reticulate::import("scipy", delay_load = TRUE)
 }
