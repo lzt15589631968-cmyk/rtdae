@@ -1,5 +1,6 @@
 # Create a global variable at the top level to reserve a space for the Python module (set to NULL initially)
 scipy <- NULL
+gd <- NULL
 # Automatically set up the Python environment when the R package is loaded
 .onLoad <- function(libname, pkgname) {
   # Define our package's specific virtual environment name
@@ -11,4 +12,5 @@ scipy <- NULL
   }
   # Safely load scipy only when a user actually calls a function (Delay-Loading)
   scipy <<- reticulate::import("scipy", delay_load = TRUE)
+  gd <<- reticulate::import("gudhi", delay_load = TRUE)
 }
