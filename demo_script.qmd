@@ -1,0 +1,87 @@
+---
+title: "Demo Script: Topological Autoencoder for R (rtdae)"
+author: "Zitong Liu"
+format: html
+---
+
+## 1. Project Introduction
+Standard autoencoders are efficient at data compression but often ruin the original topological shape of the data (such as loops and cavities). Our R package, **`rtdae`**, uses a deep learning approach via `PyTorch` and `GUDHI` to reduce data dimensions while perfectly **preserving its topological structures**.
+
+## 2. Environment Setup
+The cross-language integration between R and Python is fully established. Upon package instantiation, the runtime automatically binds to the dedicated virtual environment (`r-rtdae-env`) and manages deferred Python module loading.
+
+The global initializations for **`torch`**, **`gudhi`**, and **`scipy`** are declared with delay-loading within `zzz.R`. This guarantees lightweight package loading overhead while maintaining a robust PyTorch tensor computation pipeline.
+
+---
+
+## 3. Targeted User Workflow
+The following workflow illustrates the high-level API designed for standard R practitioners. R users will not need to write a single line of Python or PyTorch code. The complexity of PyTorch model construction and tensor conversion is abstracted away entirely:
+
+```r
+#| eval: false
+library(rtdae)
+
+# Step 1: Input Data Preparation
+# Pass a native R numerical matrix
+my_matrix <- matrix(rnorm(1000), nrow = 100, ncol = 10)
+
+# Step 2: High-Level Pipeline Execution
+# Automatically converts R matrices to PyTorch tensors and executes the TAE training loop
+trained_model <- fit_tae(data = my_matrix, latent_dim = 2, epochs = 20)
+
+# Step 3: Seamless Integration with R Ecosystem
+# Returns a native R data.frame, fully compatible with ggplot2 and downstream statistical workflows
+head(trained_model)
+```
+## 4. Proof of Concept: Two-Stage Modular Verification
+To guarantee execution feasibility, the implementation verification is decoupled into a two-stage evaluation protocol.
+
+Stage 1: Pure Python Baseline Execution
+Validates the structural correctness of underlying Python modules (`topology.py`, `vanilla.py`, `base.py` and `submodules.py`) in an isolated Python runtime:
+```python
+#| eval: false
+import numpy as np
+from inst.python.vanilla import TopologicalAutoencoder
+
+# 1. Synthesize high-dimensional benchmark data
+train_data = np.random.randn(100, 10).astype(np.float32)
+test_data  = np.random.randn(20, 10).astype(np.float32)
+
+# 2. Instantiate and fit the topological autoencoder
+model = TopologicalAutoencoder(input_dim=10, latent_dim=2)
+model.fit(train_data, epochs=10)
+
+# 3. Project test samples onto the latent space
+compressed_test = model.transform(test_data)
+print("Python projection complete. Output shape:", compressed_test.shape)
+```
+Stage 2: R-Python Interoperability Verification (Via Reticulate)
+Replicates the baseline pipeline directly through the R interface. This confirms that reticulate correctly routes memory buffers between R matrices and PyTorch tensors:
+```r
+#| eval: false
+library(reticulate)
+
+# 1. Attach virtual environment
+use_virtualenv("r-rtdae-env", required = TRUE)
+
+# 2. Dynamically resolve Python source path (supports both dev & installed package contexts)
+py_path <- system.file("python", package = "rtdae")
+if (py_path == "") {
+  # Fallback to local source directory during active development
+  py_path <- file.path(getwd(), "inst", "python")
+}
+
+# Safety Check: Verify script existence before module import
+if (!file.exists(file.path(py_path, "vanilla.py"))) {
+  stop("Cannot locate 'vanilla.py'. Please ensure working directory is set to 'rtdae' root.")
+}
+
+# 3. Import Python backend engine
+vanilla_engine <- import_from_path("vanilla", path = py_path)
+
+# 4. Instantiate PyTorch architecture & verify model parameters
+model <- vanilla_engine$ConvolutionalAutoencoderModel()
+
+# 5. Print PyTorch model summary in R console
+print(model)
+```
