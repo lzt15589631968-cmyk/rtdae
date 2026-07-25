@@ -79,10 +79,6 @@ if (!file.exists(file.path(py_path, "vanilla.py"))) {
   stop("Cannot locate 'vanilla.py'. Please ensure the working directory is set to the 'rtdae' package root.")
 }
 
-# Step 4: Import Python Engine and Instantiate PyTorch Model
-vanilla_engine <- import_from_path("vanilla", path = py_path)
-model <- vanilla_engine$ConvolutionalAutoencoderModel()
-
-# Step 5: Verify Model Architecture Output
-print(model)
+# Step 4: Execute End-to-End Pipeline (Model Training and Topological Homology)
+source_python(file.path(py_path, "test_vanilla.py"))
 ```
