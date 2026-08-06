@@ -2,7 +2,8 @@
 % Please edit documentation in R/tae.R
 \name{fit_tae}
 \alias{fit_tae}
-\title{Fit Topological Autoencoder (TAE)}
+\title{Trains a topological autoencoder on an R matrix or data.frame to perform
+topology-preserving dimensionality reduction.}
 \usage{
 fit_tae(
   x,
@@ -34,12 +35,4 @@ A numeric \code{matrix} or \code{data.frame} of dimensions \code{c(nrow(x), late
 \description{
 Trains a topological autoencoder on an R matrix or data.frame to perform
 topology-preserving dimensionality reduction.
-}
-\examples{
-\dontrun{
-library(rtdae)
-mat <- matrix(rnorm(100 * 10), nrow = 100, ncol = 10)
-res <- fit_tae(mat, latent_dim = 2, epochs = 20)
-head(res)
-}
 }

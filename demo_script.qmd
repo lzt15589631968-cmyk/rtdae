@@ -2,83 +2,146 @@
 title: "Demo Script: Topological Autoencoder for R (rtdae)"
 author: "Zitong Liu"
 format: html
+editor: visual
 ---
 
 ## 1. Project Introduction
-Standard autoencoders are efficient at data compression but often ruin the original topological shape of the data (such as loops and cavities). Our R package, **`rtdae`**, uses a deep learning approach via `PyTorch` and `GUDHI` to reduce data dimensions while perfectly preserving its topological structures.
+
+Standard autoencoders are efficient at data compression but often ruin the original topological shape of the data (such as loops, clusters, and cavities). Our R package, **`rtdae`**, uses a deep learning approach via `PyTorch` and `GUDHI` to reduce data dimensions while preserving its topological structures using persistent homology loss terms.
 
 ## 2. Environment Setup
-The cross-language integration between R and Python is fully established. Upon package instantiation, the runtime automatically binds to the dedicated virtual environment (`r-rtdae-env`) and manages deferred Python module loading.
 
-The global initializations for **`torch`**, **`gudhi`**, and **`scipy`** are declared with delay-loading within `zzz.R`. This guarantees lightweight package loading overhead while maintaining a robust PyTorch tensor computation pipeline.
+The cross-language integration between R and Python is fully established. Upon loading the package, `rtdae` automatically binds to the dedicated virtual environment (`r-rtdae-env`) and manages deferred loading for Python backends (`torch`, `gudhi`, `scipy`).
+
+```{r setup}
+#| message: false
+#| warning: false
+library(rtdae)
+```
 
 ---
 
-## 3. Targeted User Workflow
-The following workflow illustrates the high-level API designed for standard R practitioners. R users will not need to write a single line of Python or PyTorch code. The complexity of PyTorch model construction and tensor conversion is abstracted away entirely:
+## 3. High-Level User Workflow
 
-```r
-#| eval: false
-library(rtdae)
+The primary interface for standard R users is `fit_tae()`. The complexity of PyTorch tensor memory conversion and neural network training loops is abstracted away entirely.
 
-# Step 1: Input Data Preparation
-# Pass a native R numerical matrix
-my_matrix <- matrix(rnorm(1000), nrow = 100, ncol = 10)
+### 3.1 Quick Verification (Synthetic Data)
 
-# Step 2: High-Level Pipeline Execution
-# Automatically converts R matrices to PyTorch tensors and executes the TAE training loop
-trained_model <- fit_tae(data = my_matrix, latent_dim = 2, epochs = 20)
+We first verify the pipeline functionality using a synthetic numeric matrix:
 
-# Step 3: Seamless Integration with R Ecosystem
-# Returns a native R data.frame, fully compatible with ggplot2 and downstream statistical workflows
-head(trained_model)
+```{r synthetic-demo}
+set.seed(123)
+
+# 1. Synthesize benchmark matrix (100 samples x 10 features)
+test_mat <- matrix(rnorm(100 * 10), nrow = 100, ncol = 10)
+
+# 2. Fit Topological Autoencoder (5 epochs)
+res_mat <- fit_tae(test_mat, latent_dim = 2, epochs = 5)
+
+# 3. Inspect low-dimensional representations
+head(res_mat)
 ```
-## 4. Proof of Concept: Two-Stage Modular Verification
-To guarantee execution feasibility, the implementation verification is decoupled into a two-stage evaluation protocol.
 
-Stage 1: Pure Python Baseline Execution
-Validates the structural correctness of underlying Python modules (`topology.py`, `vanilla.py`, `base.py` and `submodules.py`) in an isolated Python runtime:
+### 3.2 Visualizing Loss and Latent Representations
+
+We can extract the training loss history and latent coordinates directly from attributes attached to the result object.
+
+```{r synthetic-plots, fig.width=10, fig.height=4.5}
+par(mfrow = c(1, 2))
+
+# Training Loss History
+plot(attr(res_mat, "loss_history"), type = "l", col = "firebrick", lwd = 2,
+     xlab = "Epoch", ylab = "Loss", main = "TAE Training Loss (Random Data)")
+
+# 2D Latent Representation
+plot(res_mat[, 1], res_mat[, 2], col = "royalblue", pch = 16,
+     xlab = "Latent 1", ylab = "Latent 2", main = "TAE Latent Space (Random Data)")
+
+par(mfrow = c(1, 1))
+```
+
+---
+
+## 4. Benchmark Case Study: Iris Dataset
+
+To evaluate how `rtdae` preserves underlying manifold structures, we apply it to the classic Iris dataset ($150 \times 4$).
+
+### 4.1 Training the Autoencoder
+
+```{r iris-training}
+set.seed(42)
+
+# Extract 4 numeric features
+iris_mat <- as.matrix(iris[, 1:4])
+
+# Train for 100 epochs to preserve global manifold topology
+res_iris <- fit_tae(iris_mat, latent_dim = 2, epochs = 100)
+```
+
+### 4.2 Training Loss Convergence
+
+```{r iris-loss, fig.width=6, fig.height=4}
+plot(attr(res_iris, "loss_history"), type = "l", col = "darkgreen", lwd = 2,
+     xlab = "Epoch", ylab = "Loss", main = "TAE Loss Convergence (Iris)")
+```
+
+### 4.3 Topological Clustering Visualization
+
+The latent coordinates successfully isolate Setosa from Versicolor and Virginica while preserving continuous manifold properties.
+
+```{r iris-latent, fig.width=6.5, fig.height=5.5}
+plot(res_iris[, 1], res_iris[, 2], 
+     col = as.numeric(iris$Species), pch = 16, cex = 1.2,
+     xlab = "Latent 1", ylab = "Latent 2", 
+     main = "TAE on Iris Dataset")
+
+legend("topright", 
+       legend = levels(iris$Species), 
+       col = 1:3, pch = 16, bty = "n")
+```
+
+---
+
+## 5. Developer Evaluation Protocol
+
+For package maintainers, `rtdae` maintains a two-stage evaluation protocol ensuring low-level stability across Python backends.
+
+### Stage 1: Isolated Python Module Verification
+
+Validates structural correctness of underlying Python neural network modules in pure Python:
+
 ```python
 #| eval: false
 import numpy as np
-from inst.python.vanilla import TopologicalAutoencoder
+from inst.python.vanilla import VanillaAutoencoderModel
 
-# 1. Synthesize high-dimensional benchmark data
+# Synthesize high-dimensional benchmark data
 train_data = np.random.randn(100, 10).astype(np.float32)
-test_data  = np.random.randn(20, 10).astype(np.float32)
 
-# 2. Instantiate and fit the topological autoencoder
-model = TopologicalAutoencoder(input_dim=10, latent_dim=2)
-model.fit(train_data, epochs=10)
-
-# 3. Project test samples onto the latent space
-compressed_test = model.transform(test_data)
-print("Python projection complete. Output shape:", compressed_test.shape)
+# Instantiate topological model wrapper
+model = VanillaAutoencoderModel(
+    autoencoder_model="MLPAutoencoder",
+    ae_kwargs={"arch": [10, 32, 32, 2]},
+    lam=1.0
+)
 ```
-Stage 2: R-Python Interoperability Verification (Via Reticulate)
-Replicates the baseline pipeline directly through the R interface. This confirms that reticulate correctly routes memory buffers between R matrices and PyTorch tensors:
-```r
+
+### Stage 2: R-Python Interoperability Verification
+
+Directly executes backend scripts through reticulate to verify cross-language memory buffers:
+
+```{r stage2-test}
+#| eval: false
 library(reticulate)
 
-# Step 1: Working Directory Setup
-# Note: Opening 'rtdae.Rproj' in RStudio automatically configures the working directory.
-# setwd("path/to/cloned/rtdae")
-
-# Step 2: Virtual Environment Verification and Automated Initialization
+# Ensure virtual environment is ready
 if (!virtualenv_exists("r-rtdae-env")) {
-  message("Creating 'r-rtdae-env' virtual environment...")
   virtualenv_create("r-rtdae-env")
   virtualenv_install("r-rtdae-env", packages = c("torch", "numpy", "scipy", "gudhi"))
 }
 use_virtualenv("r-rtdae-env", required = TRUE)
 
-# Step 3: Dynamically Resolve Backend Python Source Path
+# Test raw python backend execution
 py_path <- file.path(getwd(), "inst", "python")
-
-if (!file.exists(file.path(py_path, "vanilla.py"))) {
-  stop("Cannot locate 'vanilla.py'. Please ensure the working directory is set to the 'rtdae' package root.")
-}
-
-# Step 4: Execute End-to-End Pipeline (Model Training and Topological Homology)
 source_python(file.path(py_path, "test_vanilla.py"))
 ```

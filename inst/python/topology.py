@@ -1,5 +1,3 @@
-"""Methods for calculating lower-dimensional persistent homology."""
-
 import os
 import sys
 

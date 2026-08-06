@@ -1,5 +1,3 @@
-#' Fit Topological Autoencoder (TAE)
-#'
 #' Trains a topological autoencoder on an R matrix or data.frame to perform
 #' topology-preserving dimensionality reduction.
 #'
@@ -14,14 +12,6 @@
 #' @return A numeric \code{matrix} or \code{data.frame} of dimensions \code{c(nrow(x), latent_dim)}
 #'   containing the low-dimensional latent representations, with model training history attached.
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#' library(rtdae)
-#' mat <- matrix(rnorm(100 * 10), nrow = 100, ncol = 10)
-#' res <- fit_tae(mat, latent_dim = 2, epochs = 20)
-#' head(res)
-#' }
 fit_tae <- function(x,
                     latent_dim = 2L,
                     epochs = 100L,
@@ -31,12 +21,12 @@ fit_tae <- function(x,
 
   return_type <- match.arg(return_type)
 
-  # Validate backend initialization
+  # 1. Validate backend initialization
   if (is.null(.pkgenv$torch) || is.null(.pkgenv$gudhi)) {
-    stop("Python backend (torch/gudhi) is not initialized. Please re-load the library or check environment setup.")
+    stop("Python backend (torch/gudhi) is not initialized.")
   }
 
-  # Input validation and matrix coercion
+  # 2. Validate input matrix format
   if (is.data.frame(x)) {
     x_mat <- as.matrix(x)
   } else if (is.matrix(x)) {
@@ -49,61 +39,90 @@ fit_tae <- function(x,
     stop("Input 'x' must contain numeric values.")
   }
 
-  # Tensor allocation from native R matrix
+  # 3. Convert to Torch Tensor
   torch <- .pkgenv$torch
   x_tensor <- torch$tensor(x_mat, dtype = torch$float32)
 
-  # Cast dimensions and import python model architecture
+  # 4. Extract dimension metadata
   input_dim  <- as.integer(ncol(x_mat))
   latent_dim <- as.integer(latent_dim)
   epochs     <- as.integer(epochs)
 
+  # 5. Safely inject Python path without reticulate type conversion issues
   py_path <- system.file("python", package = "rtdae")
-  if (py_path == "") {
+  if (py_path == "" || !file.exists(py_path)) {
     py_path <- file.path(getwd(), "inst", "python")
   }
+  py_path <- normalizePath(py_path, winslash = "/", mustWork = FALSE)
 
-  vanilla_mod <- reticulate::import_from_path("vanilla", path = py_path)
-  # Construct network architecture vector: input_dim -> 32 -> 32 -> latent_dim
-  arch_vec <- as.integer(c(input_dim, 32, 32, latent_dim))
+  reticulate::py_run_string(sprintf(
+    "import sys; p = '%s'\nif p not in sys.path: sys.path.insert(0, p)",
+    py_path
+  ))
 
-  # Pack model kwargs for VanillaAutoencoderModel instantiation
-  ae_kwargs <- list(
-    arch = arch_vec
-  )
+  # Safely import / reload Python modules
+  importlib <- reticulate::import("importlib")
+  sys <- reticulate::import("sys", convert = FALSE)
 
-  # Instantiate autoencoder model backend
+  sys_modules <- reticulate::py_to_r(sys$modules)
+
+  if ("submodules" %in% names(sys_modules)) {
+    submodules_mod <- importlib$reload(sys_modules[["submodules"]])
+  } else {
+    submodules_mod <- reticulate::import("submodules")
+  }
+
+  if ("vanilla" %in% names(sys_modules)) {
+    vanilla_mod <- importlib$reload(sys_modules[["vanilla"]])
+  } else {
+    vanilla_mod <- reticulate::import("vanilla")
+  }
+
+  # 6. Construct dynamic network architecture as a clean Python list
+  # [input_dim, 32, 32, latent_dim]
+  arch_list <- list(input_dim, 32L, 32L, latent_dim)
+  ae_kwargs <- list(arch = arch_list)
+
+  # 7. Instantiate the model
   model <- vanilla_mod$VanillaAutoencoderModel(
     autoencoder_model = "MLPAutoencoder",
-    ae_kwargs         = ae_kwargs
+    ae_kwargs         = ae_kwargs,
+    lam               = lam
   )
 
-  # Execution loop for optimization
+  # 8. Optimization and training loop
   optimizer <- torch$optim$Adam(model$parameters(), lr = lr)
   loss_history <- numeric(epochs)
 
   for (epoch in seq_len(epochs)) {
     optimizer$zero_grad()
 
-    # Forward pass: joint reconstruction and topological persistent homology loss
     res <- model$forward(x_tensor)
-    loss <- res[[1]]  # Extract total objective loss tensor
+    if (is.list(res) || is.tuple(res)) {
+      loss <- res[[1]]
+    } else {
+      loss <- res
+    }
 
-    # Backward pass & parameter update
     loss$backward()
     optimizer$step()
 
     loss_history[epoch] <- loss$item()
   }
 
-  # Extract low-dimensional latent representation
+  # 9. Extract low-dimensional latent representation
   model$eval()
   with(torch$no_grad(), {
     latent_tensor <- model$encode(x_tensor)
-    latent_r <- reticulate::py_to_r(latent_tensor$numpy())
+    if (inherits(latent_tensor, "torch.Tensor")) {
+      latent_np <- latent_tensor$detach()$cpu()$numpy()
+    } else {
+      latent_np <- latent_tensor
+    }
+    latent_r <- reticulate::py_to_r(latent_np)
   })
 
-  # Format output object
+  # 10. Format output
   colnames(latent_r) <- paste0("Latent_", seq_len(latent_dim))
 
   if (return_type == "data.frame") {
@@ -112,7 +131,6 @@ fit_tae <- function(x,
     out <- latent_r
   }
 
-  # Attach loss history and trained model object as attributes
   attr(out, "loss_history") <- loss_history
   attr(out, "model") <- model
 

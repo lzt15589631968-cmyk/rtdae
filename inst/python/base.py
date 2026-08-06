@@ -1,4 +1,3 @@
-"""Base class for autoencoder models."""
 import abc
 from typing import Dict, Tuple
 

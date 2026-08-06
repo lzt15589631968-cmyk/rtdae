@@ -1,38 +1,22 @@
 """Vanilla models."""
-import torch.nn as nn
 import os
 import sys
+import torch.nn as nn
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
-    
+
 import submodules
 from base import AutoencoderModel
 
 
-class ConvolutionalAutoencoderModel(submodules.ConvolutionalAutoencoder):
-    """Convolutional autoencoder model.
-
-    Same as the submodule but returns MSE loss.
-    """
-
-    def __init__(self):
-        """Convolutional Autoencoder."""
-        super().__init__()
-        self.reconst_error = nn.MSELoss()
-
-    def forward(self, x):
-        """Return MSE reconstruction loss of convolutional autoencoder."""
-        _, reconst = super().forward(x)
-        return self.reconst_error(x, reconst), tuple()
-
-
 class VanillaAutoencoderModel(AutoencoderModel):
     def __init__(self, autoencoder_model='ConvolutionalAutoencoder',
-                 ae_kwargs=None):
+                 ae_kwargs=None, lam=1.0, **kwargs):
         super().__init__()
-        ae_kwargs = ae_kwargs if ae_kwargs else {}
+        self.lam = lam
+        ae_kwargs = ae_kwargs if ae_kwargs is not None else {}
         self.autoencoder = getattr(submodules, autoencoder_model)(**ae_kwargs)
 
     def forward(self, x):
